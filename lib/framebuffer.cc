@@ -224,6 +224,68 @@ private:
 
 }
 
+class QiangLiRegisterRowAddressSetter : public RowAddressSetter {
+public:
+  QiangLiRegisterRowAddressSetter(int double_rows, const HardwareMapping &h)
+  : double_rows_(double_rows),
+  row_mask_(h.e | h.d | h.c | h.b | h.a),
+  clock_(h.a),
+  data_(h.b),
+  bk_(h.c),
+  en1_(h.d),
+  en2_(h.e),
+  last_row_(-1) {
+  }
+  virtual gpio_bits_t need_bits() const { return row_mask_; }
+
+  virtual void SetRowAddress(GPIO *io, int row) {
+    row++;
+
+    if (row == last_row_) return;
+    
+    // so far I have found that these either turn on or off the row, switch Set and Clear to turn off the rows
+    io->SetBits(bk_);
+    io->ClearBits(bk_);
+    
+    io->SetBits(clock_);
+    
+    if (row % 8 == 0) {
+       io->SetBits(data_);
+    } else {
+       io->ClearBits(data_);
+    }
+
+    io->ClearBits(clock_);
+    if (row >= 1 && row <= 8) {
+       io->ClearBits(en1_);
+       io->ClearBits(en2_);
+    }
+    if (row >= 9 && row <= 16) {
+       io->SetBits(en1_);
+       io->ClearBits(en2_);
+    }
+    if (row >= 17 && row <= 24) {
+       io->ClearBits(en1_);
+       io->SetBits(en2_);
+    }
+    if (row >= 25 && row <= 32) {
+       io->SetBits(en1_);
+       io->SetBits(en2_);
+    }
+    last_row_ = row;
+  }
+
+  private:
+  const int double_rows_;
+  const gpio_bits_t row_mask_;
+  const gpio_bits_t clock_;
+  const gpio_bits_t data_;
+  const gpio_bits_t bk_;
+  const gpio_bits_t en1_;
+  const gpio_bits_t en2_;
+  int last_row_;
+};
+
 const struct HardwareMapping *Framebuffer::hardware_mapping_ = NULL;
 RowAddressSetter *Framebuffer::row_setter_ = NULL;
 
@@ -365,6 +427,10 @@ Framebuffer::~Framebuffer() {
   case 3:
     row_setter_ = new ABCShiftRegisterRowAddressSetter(double_rows, h);
     break;
+  case 4:
+    row_setter_ = new QiangLiRegisterRowAddressSetter(double_rows, h);
+    break;    
+    
   default:
     assert(0);  // unexpected type.
   }
